@@ -118,7 +118,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
       {data.report && (
         <>
           <div className="card card-pad" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-            <a href={`/api/report/${id}/pdf`} target="_blank" className="btn btn-ghost">Preview / download PDF</a>
+            <a href={`/api/report/${id}/pdf`} target="_blank" className="btn btn-ghost">Open report → Save as PDF</a>
             {!decided && <button className="btn btn-success" disabled={busy} onClick={() => decide("approve", false)}>Approve</button>}
             {!decided && <button className="btn btn-primary" disabled={busy} onClick={() => decide("approve", true)}>Approve &amp; email</button>}
             {!decided && <button className="btn btn-danger" disabled={busy} onClick={() => decide("reject")}>Reject</button>}

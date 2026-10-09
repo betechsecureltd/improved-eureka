@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJob } from "@/lib/store";
 import { renderReportHtml } from "@/lib/report/template";
-import { htmlToPdf } from "@/lib/report/pdf";
 import { isAdmin } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
-/** GET /api/report/:id/pdf — render the branded PDF (preview or download). */
+/**
+ * GET /api/report/:id/pdf — returns the branded report as a print-ready HTML
+ * page. The viewer uses the browser's Print → Save as PDF (the template has
+ * A4 print CSS), which is reliable on serverless and keeps full brand fidelity.
+ * Server-side PDF rendering (headless Chromium) is reserved for the email
+ * attachment path, which runs on a persistent host or Pro function.
+ */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await isAdmin(req))) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
@@ -19,12 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const html = renderReportHtml(job.report, job.companyName ?? job.requesterName ?? "");
-  const pdf = await htmlToPdf(html);
-
-  return new NextResponse(new Uint8Array(pdf), {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="security-review-${job.domain}.pdf"`,
-    },
+  return new NextResponse(html, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }

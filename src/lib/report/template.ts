@@ -97,7 +97,15 @@ export function renderReportHtml(report: AnalysedReport, clientName: string): st
 <style>
   @page { size: A4; margin: 16mm 15mm; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: ${BRAND.ink}; font-size: 11pt; line-height: 1.5; margin: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: ${BRAND.ink}; font-size: 11pt; line-height: 1.5; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* On screen, frame the report like a sheet of paper and show a print hint. */
+  @media screen {
+    body { background: #e9edf2; }
+    .sheet { max-width: 820px; margin: 0 auto; background: #fff; padding: 28px 34px; }
+    .printbar { max-width: 820px; margin: 16px auto 0; font-size: 13px; color: ${BRAND.muted}; text-align: center; }
+    .printbar button { background: ${BRAND.primary}; color: #fff; border: 0; border-radius: 8px; padding: 9px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  }
+  @media print { .printbar { display: none; } .sheet { max-width: none; margin: 0; padding: 0; } }
   .cover { border-top: 6px solid ${BRAND.primary}; padding-top: 22px; margin-bottom: 26px; }
   .logo { height: 46px; margin-bottom: 20px; }
   .logo svg { height: 46px; width: auto; }
@@ -133,6 +141,11 @@ export function renderReportHtml(report: AnalysedReport, clientName: string): st
 </style>
 </head>
 <body>
+  <div class="printbar">
+    This is your report preview — use <strong>Print → Save as PDF</strong> to download it.
+    &nbsp; <button onclick="window.print()">Save as PDF</button>
+  </div>
+  <div class="sheet">
   <div class="cover">
     ${logo}
     <h1>External Security Review</h1>
@@ -186,6 +199,7 @@ export function renderReportHtml(report: AnalysedReport, clientName: string): st
     <div class="name">${esc(BRAND.name)}</div>
     ${contactBits}
     <div class="disclaimer">This review is based on publicly available data and is provided in good faith as a courtesy. No active scanning, probing or login attempts were made. It does not constitute a guarantee of security or a substitute for a full, authorised assessment.</div>
+  </div>
   </div>
 </body>
 </html>`;
