@@ -14,20 +14,64 @@ Hard rules:
 - Lead with what is done well before what needs attention.
 - Be specific and useful, but keep technical specifics proportionate for a customer audience.
 
-Return ONLY valid JSON matching the requested schema. No markdown, no commentary.`;
+Use the "submit_report" tool to return the report. Fill every field.`;
+
+// JSON Schema for the structured tool output — the model must return data in
+// exactly this shape, so there is no fragile text-to-JSON parsing.
+const REPORT_TOOL: Anthropic.Tool = {
+  name: "submit_report",
+  description: "Submit the finished customer-facing security review.",
+  input_schema: {
+    type: "object",
+    properties: {
+      executiveSummary: { type: "string", description: "4-6 sentences, plain English, positives first" },
+      summaryRows: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            area: { type: "string" },
+            status: { type: "string", enum: ["green", "amber", "red", "info"] },
+            observed: { type: "string" },
+          },
+          required: ["area", "status", "observed"],
+        },
+      },
+      observations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            title: { type: "string" },
+            rag: { type: "string", enum: ["green", "amber", "red", "info"] },
+            area: { type: "string" },
+            body: { type: "string" },
+          },
+          required: ["id", "title", "rag", "area", "body"],
+        },
+      },
+      recommendations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            priority: { type: "number" },
+            recommendation: { type: "string" },
+            effort: { type: "string", enum: ["Low", "Low–Medium", "Medium", "Ongoing"] },
+            why: { type: "string" },
+          },
+          required: ["priority", "recommendation", "effort", "why"],
+        },
+      },
+      caveats: { type: "array", items: { type: "string" } },
+    },
+    required: ["executiveSummary", "summaryRows", "observations", "recommendations", "caveats"],
+  },
+};
 
 function schemaPrompt(findings: Findings): string {
-  return `Produce a JSON object with this exact shape:
-
-{
-  "executiveSummary": string,            // 4-6 sentences, plain English, positives first
-  "summaryRows": [ { "area": string, "status": "green"|"amber"|"red"|"info", "observed": string } ],
-  "observations": [ { "id": string, "title": string, "rag": "green"|"amber"|"red"|"info", "area": string, "body": string } ],
-  "recommendations": [ { "priority": number, "recommendation": string, "effort": "Low"|"Low–Medium"|"Medium"|"Ongoing", "why": string } ],
-  "caveats": [ string ]
-}
-
-Base everything strictly on these findings:
+  return `Base everything strictly on these findings:
 
 ${JSON.stringify(findings, null, 2)}
 
@@ -45,20 +89,19 @@ export async function analyseFindings(findings: Findings): Promise<AnalysedRepor
 
   const msg = await client.messages.create({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: SYSTEM,
+    tools: [REPORT_TOOL],
+    tool_choice: { type: "tool", name: "submit_report" },
     messages: [{ role: "user", content: schemaPrompt(findings) }],
   });
 
-  const text = msg.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  const toolUse = msg.content.find(
+    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "submit_report"
+  );
+  if (!toolUse) throw new Error("Analysis did not return a structured report.");
 
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Analysis did not return JSON.");
-
-  const parsed = JSON.parse(jsonMatch[0]) as Omit<AnalysedReport, "domain" | "generatedAt">;
+  const parsed = toolUse.input as Omit<AnalysedReport, "domain" | "generatedAt">;
 
   return {
     domain: findings.domain,
