@@ -20,7 +20,30 @@ type Backend = {
 let backend: Backend | null = null;
 
 async function makeBackend(): Promise<Backend> {
-  // --- 1. Standard Redis (Railway) ---
+  // --- 1. Vercel KV / Upstash REST API (serverless-friendly) ---
+  // Preferred when present: the REST client works correctly on Vercel's
+  // short-lived serverless functions, where a TCP Redis client (ioredis) does
+  // not pool reliably. Railway doesn't set these, so it falls through to #2.
+  if (process.env.KV_REST_API_URL) {
+    const { kv } = await import("@vercel/kv");
+    return {
+      async getJob(id) {
+        return (await kv.get<ReportJob>(KEY_PREFIX + id)) ?? null;
+      },
+      async saveJob(job) {
+        const existed = await kv.get<ReportJob>(KEY_PREFIX + job.id);
+        await kv.set(KEY_PREFIX + job.id, job);
+        if (!existed) await kv.lpush(INDEX_KEY, job.id);
+      },
+      async listJobs(limit) {
+        const ids = await kv.lrange(INDEX_KEY, 0, limit - 1);
+        const jobs = await Promise.all(ids.map((id) => kv.get<ReportJob>(KEY_PREFIX + id)));
+        return jobs.filter((j): j is ReportJob => Boolean(j));
+      },
+    };
+  }
+
+  // --- 2. Standard Redis over TCP (Railway's Redis plugin, etc.) ---
   if (process.env.REDIS_URL) {
     const { default: Redis } = await import("ioredis");
     const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 3 });
@@ -39,26 +62,6 @@ async function makeBackend(): Promise<Backend> {
         if (ids.length === 0) return [];
         const raws = await redis.mget(ids.map((id) => KEY_PREFIX + id));
         return raws.filter((r): r is string => Boolean(r)).map((r) => JSON.parse(r) as ReportJob);
-      },
-    };
-  }
-
-  // --- 2. Vercel KV / Upstash REST ---
-  if (process.env.KV_REST_API_URL) {
-    const { kv } = await import("@vercel/kv");
-    return {
-      async getJob(id) {
-        return (await kv.get<ReportJob>(KEY_PREFIX + id)) ?? null;
-      },
-      async saveJob(job) {
-        const existed = await kv.get<ReportJob>(KEY_PREFIX + job.id);
-        await kv.set(KEY_PREFIX + job.id, job);
-        if (!existed) await kv.lpush(INDEX_KEY, job.id);
-      },
-      async listJobs(limit) {
-        const ids = await kv.lrange(INDEX_KEY, 0, limit - 1);
-        const jobs = await Promise.all(ids.map((id) => kv.get<ReportJob>(KEY_PREFIX + id)));
-        return jobs.filter((j): j is ReportJob => Boolean(j));
       },
     };
   }
