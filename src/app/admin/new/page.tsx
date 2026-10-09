@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function NewReportPage() {
   const router = useRouter();
-  const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -17,10 +16,6 @@ export default function NewReportPage() {
     notes: "",
     consent: false,
   });
-
-  useEffect(() => {
-    setKey(sessionStorage.getItem("btsKey") ?? "");
-  }, []);
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -35,17 +30,16 @@ export default function NewReportPage() {
     setBusy(true);
     const res = await fetch("/api/report", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, trigger: "manual", source: "admin-manual" }),
     });
     setBusy(false);
 
     if (res.status === 202) {
       const { id } = await res.json();
-      sessionStorage.setItem("btsKey", key);
       router.push(`/admin/${id}`);
     } else if (res.status === 401) {
-      setError("Unauthorised — check your admin key below.");
+      router.replace("/login?next=/admin/new");
     } else {
       const e2 = await res.json().catch(() => ({}));
       setError(e2.error ?? `Failed (${res.status})`);
@@ -100,11 +94,6 @@ export default function NewReportPage() {
             <label htmlFor="consent">
               I confirm we are authorised to run a passive external assessment of this domain, and that the report will be sent only to the contact above.
             </label>
-          </div>
-
-          <div className="field full">
-            <label>Admin key</label>
-            <input className="input" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Your admin API key" />
           </div>
         </div>
 

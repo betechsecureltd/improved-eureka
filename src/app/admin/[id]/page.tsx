@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface ReportData {
   status: string;
@@ -25,13 +26,18 @@ interface ReportData {
 
 const BADGE: Record<string, string> = { green: "green", amber: "amber", red: "red", info: "grey" };
 
+function statusColour(s: string): string {
+  if (s === "awaiting_approval") return "amber";
+  if (s === "sent" || s === "approved") return "green";
+  if (s === "error" || s === "rejected") return "red";
+  return "info";
+}
+
 export default function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [key, setKey] = useState("");
+  const router = useRouter();
   const [data, setData] = useState<ReportData | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => setKey(sessionStorage.getItem("btsKey") ?? ""), []);
 
   async function load() {
     const res = await fetch(`/api/report/${id}`);
@@ -39,40 +45,53 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   }
   useEffect(() => {
     load();
+    const working = true;
     const t = setInterval(load, 4000);
+    void working;
     return () => clearInterval(t);
   }, [id]);
 
-  async function decide(decision: "approve" | "reject") {
-    if (decision === "approve" && !confirm(`Send this report to ${data?.requesterEmail}?`)) return;
+  async function decide(decision: "approve" | "reject", send = false) {
+    if (decision === "approve" && send && !confirm(`Email this report to ${data?.requesterEmail}?`)) return;
     setBusy(true);
     const res = await fetch(`/api/report/${id}/approve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": key },
-      body: JSON.stringify({ decision }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, send }),
     });
     setBusy(false);
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      alert(`Failed: ${e.error ?? res.status}`);
-    }
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) alert(`Failed: ${out.error ?? res.status}`);
+    else if (out.note) alert(out.note);
     load();
+  }
+
+  async function rerun() {
+    setBusy(true);
+    const res = await fetch(`/api/report/${id}/rerun`, { method: "POST" });
+    setBusy(false);
+    if (res.ok) {
+      const { id: newId } = await res.json();
+      router.push(`/admin/${newId}`);
+    } else {
+      alert("Could not start a re-run.");
+    }
   }
 
   if (!data) return <main className="container"><p>Loading…</p></main>;
 
   const working = !data.report && data.status !== "error";
+  const decided = data.status === "sent" || data.status === "approved" || data.status === "rejected";
 
   return (
     <main className="container">
       <div className="page-head">
         <div>
-          <a href="/admin" style={{ fontSize: 14 }}>← Queue</a>
+          <a href="/admin" style={{ fontSize: 14 }}>← Dashboard</a>
           <h1 style={{ marginTop: 6 }}>{data.domain}</h1>
-          <p>
-            <span className={`badge ${BADGE[statusColour(data.status)] ?? "grey"}`}>{data.status.replace(/_/g, " ")}</span>
-          </p>
+          <p><span className={`badge ${BADGE[statusColour(data.status)] ?? "grey"}`}>{data.status.replace(/_/g, " ")}</span></p>
         </div>
+        <button className="btn btn-ghost" onClick={rerun} disabled={busy}>↻ Run again</button>
       </div>
 
       {/* Captured intake details */}
@@ -88,18 +107,24 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         </div>
       </div>
 
-      {data.error && <p style={{ color: "var(--red)" }}>Error: {data.error}</p>}
-      {working && <div className="card card-pad"><p style={{ margin: 0 }}>Generating report… this page refreshes automatically.</p></div>}
+      {data.error && (
+        <div className="card card-pad" style={{ marginBottom: 16, borderColor: "var(--red)" }}>
+          <strong style={{ color: "var(--red)" }}>Error:</strong> {data.error}
+          <div style={{ marginTop: 10 }}><button className="btn btn-ghost" onClick={rerun} disabled={busy}>↻ Try again</button></div>
+        </div>
+      )}
+      {working && <div className="card card-pad"><p style={{ margin: 0 }}>Generating report… this page refreshes automatically (usually 20–40 seconds).</p></div>}
 
       {data.report && (
         <>
           <div className="card card-pad" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-            <a href={`/api/report/${id}/pdf`} target="_blank" className="btn btn-ghost">Preview PDF</a>
-            <input className="input" style={{ width: 200 }} type="password" placeholder="Admin key" value={key} onChange={(e) => setKey(e.target.value)} />
-            <button className="btn btn-success" disabled={busy || data.status === "sent"} onClick={() => decide("approve")}>
-              {data.status === "sent" ? "Sent ✓" : "Approve & send"}
-            </button>
-            <button className="btn btn-danger" disabled={busy} onClick={() => decide("reject")}>Reject</button>
+            <a href={`/api/report/${id}/pdf`} target="_blank" className="btn btn-ghost">Preview / download PDF</a>
+            {!decided && <button className="btn btn-success" disabled={busy} onClick={() => decide("approve", false)}>Approve</button>}
+            {!decided && <button className="btn btn-primary" disabled={busy} onClick={() => decide("approve", true)}>Approve &amp; email</button>}
+            {!decided && <button className="btn btn-danger" disabled={busy} onClick={() => decide("reject")}>Reject</button>}
+            {data.status === "approved" && <span className="badge green">Approved ✓</span>}
+            {data.status === "sent" && <span className="badge green">Emailed ✓</span>}
+            {data.status === "rejected" && <span className="badge red">Rejected</span>}
           </div>
 
           <div className="card card-pad">
@@ -138,19 +163,8 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             <h2>Caveats</h2>
             <ul>{data.report.caveats.map((c, i) => <li key={i}>{c}</li>)}</ul>
           </div>
-
-          <p style={{ color: "var(--muted)", fontSize: 13 }}>
-            Review the wording, preview the PDF, then approve to send. (Inline editing before approval is a planned enhancement.)
-          </p>
         </>
       )}
     </main>
   );
-}
-
-function statusColour(s: string): string {
-  if (s === "awaiting_approval") return "amber";
-  if (s === "sent" || s === "approved") return "green";
-  if (s === "error" || s === "rejected") return "red";
-  return "info";
 }

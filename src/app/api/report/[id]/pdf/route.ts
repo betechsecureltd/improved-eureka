@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getJob } from "@/lib/store";
 import { renderReportHtml } from "@/lib/report/template";
 import { htmlToPdf } from "@/lib/report/pdf";
+import { isAdmin } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /** GET /api/report/:id/pdf — render the branded PDF (preview or download). */
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isAdmin(req))) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  }
   const { id } = await params;
   const job = await getJob(id);
   if (!job || !job.report) {

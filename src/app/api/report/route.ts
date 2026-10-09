@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { newJob, runReport } from "@/lib/pipeline";
 import { saveJob, listJobs } from "@/lib/store";
+import { canCreate, isAdmin } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 // Max function duration. Vercel Hobby allows up to 60s; Pro up to 300s. On a
@@ -10,32 +11,13 @@ export const runtime = "nodejs";
 // or this limit is hit.
 export const maxDuration = 60;
 
-// Creating a job accepts EITHER the intake key (website form via n8n) or the
-// admin key (manual form in the admin UI).
-function canCreate(req: NextRequest): boolean {
-  const key = req.headers.get("x-api-key");
-  if (!key) return false;
-  return (
-    (Boolean(process.env.INTAKE_API_KEY) && key === process.env.INTAKE_API_KEY) ||
-    (Boolean(process.env.ADMIN_API_KEY) && key === process.env.ADMIN_API_KEY)
-  );
-}
-
-// Listing jobs is an admin action.
-function isAdmin(req: NextRequest): boolean {
-  const key = req.headers.get("x-api-key");
-  return Boolean(process.env.ADMIN_API_KEY) && key === process.env.ADMIN_API_KEY;
-}
-
 /**
  * POST /api/report
  * Create a report job. Called by the website form via n8n, or manually.
- * Body: { domain, email, name?, consent:boolean, trigger?: "form"|"manual" }
- *
- * Protected by a shared secret (x-api-key) so only your n8n/admin can trigger it.
+ * Admin (browser session) or the intake key (n8n) may create jobs.
  */
 export async function POST(req: NextRequest) {
-  if (!canCreate(req)) {
+  if (!(await canCreate(req))) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
 
@@ -90,10 +72,10 @@ export async function POST(req: NextRequest) {
 
 /** GET /api/report — list recent jobs (admin). */
 export async function GET(req: NextRequest) {
-  if (!isAdmin(req)) {
+  if (!(await isAdmin(req))) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
-  const jobs = await listJobs();
+  const jobs = await listJobs(200);
   return NextResponse.json(
     jobs.map((j) => ({
       id: j.id,

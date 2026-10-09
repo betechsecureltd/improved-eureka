@@ -1,4 +1,5 @@
 import "./globals.css";
+import TopNav from "./_components/TopNav";
 
 export const metadata = {
   title: "Be Tech Secure — Security Reporter",
@@ -11,18 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en-GB">
       <body>
-        <header className="topbar">
-          <div className="topbar-inner">
-            <a className="brandmark" href="/admin">
-              <span className="mark" />
-              {BRAND}
-            </a>
-            <nav className="nav">
-              <a href="/admin">Queue</a>
-              <a href="/admin/new">New report</a>
-            </nav>
-          </div>
-        </header>
+        <TopNav brand={BRAND} />
         {children}
       </body>
     </html>

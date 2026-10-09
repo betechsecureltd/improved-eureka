@@ -9,7 +9,7 @@ export default function Home() {
           then emails the branded PDF to the client once approved.
         </p>
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <a className="btn btn-primary" href="/admin">Open queue</a>
+          <a className="btn btn-primary" href="/admin">Open dashboard</a>
           <a className="btn btn-ghost" href="/admin/new">New report</a>
         </div>
         <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 16, marginBottom: 0 }}>

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJob } from "@/lib/store";
+import { isAdmin } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
 /** GET /api/report/:id — job status + report JSON (for polling / admin UI). */
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isAdmin(req))) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  }
   const { id } = await params;
   const job = await getJob(id);
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
