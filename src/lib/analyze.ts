@@ -87,21 +87,46 @@ Guidance:
 export async function analyseFindings(findings: Findings): Promise<AnalysedReport> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  // Not all models support forcing tool_choice, so we leave it on "auto" and
+  // provide a single tool the prompt tells the model to use. We then accept the
+  // result from either a tool_use block (preferred) or, as a fallback, JSON in a
+  // text block.
   const msg = await client.messages.create({
     model: MODEL,
     max_tokens: 8192,
     system: SYSTEM,
     tools: [REPORT_TOOL],
-    tool_choice: { type: "tool", name: "submit_report" },
     messages: [{ role: "user", content: schemaPrompt(findings) }],
   });
+
+  type Body = Omit<AnalysedReport, "domain" | "generatedAt">;
+  let parsed: Body | null = null;
 
   const toolUse = msg.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "submit_report"
   );
-  if (!toolUse) throw new Error("Analysis did not return a structured report.");
+  if (toolUse) {
+    parsed = toolUse.input as Body;
+  } else {
+    // Fallback: extract JSON from any text block.
+    const text = msg.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .replace(/```json\s*/gi, "")
+      .replace(/```/g, "");
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end > start) {
+      try {
+        parsed = JSON.parse(text.slice(start, end + 1)) as Body;
+      } catch {
+        parsed = null;
+      }
+    }
+  }
 
-  const parsed = toolUse.input as Omit<AnalysedReport, "domain" | "generatedAt">;
+  if (!parsed) throw new Error("Analysis did not return a usable report.");
 
   return {
     domain: findings.domain,
