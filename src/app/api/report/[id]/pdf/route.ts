@@ -4,7 +4,7 @@ import { renderReportHtml } from "@/lib/report/template";
 import { htmlToPdf } from "@/lib/report/pdf";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 /** GET /api/report/:id/pdf — render the branded PDF (preview or download). */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -5,7 +5,7 @@ import { htmlToPdf } from "@/lib/report/pdf";
 import { sendReportEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 function authorised(req: NextRequest): boolean {
   const key = req.headers.get("x-api-key");

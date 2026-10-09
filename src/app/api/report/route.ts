@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { newJob, runReport } from "@/lib/pipeline";
 import { saveJob, listJobs } from "@/lib/store";
 
 export const runtime = "nodejs";
-export const maxDuration = 300; // allow long-running collection (Vercel Pro)
+// Max function duration. Vercel Hobby allows up to 60s; Pro up to 300s. On a
+// persistent host (Railway) this cap is ignored. The background pipeline runs
+// via after(), so it keeps executing after the 202 response until it finishes
+// or this limit is hit.
+export const maxDuration = 60;
 
 // Creating a job accepts EITHER the intake key (website form via n8n) or the
 // admin key (manual form in the admin UI).
@@ -73,9 +78,12 @@ export async function POST(req: NextRequest) {
   });
   await saveJob(job);
 
-  // Kick off the pipeline in the background; return the job id immediately so
-  // the caller can poll status without holding the request open.
-  void runReport(job.id);
+  // Run the pipeline after the response is sent. after() keeps the serverless
+  // function alive for this work on Vercel (and runs inline on a persistent
+  // host), so the report still finishes once the caller has its job id.
+  after(async () => {
+    await runReport(job.id);
+  });
 
   return NextResponse.json({ id: job.id, status: job.status }, { status: 202 });
 }

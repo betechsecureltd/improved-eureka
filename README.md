@@ -153,14 +153,22 @@ If PDF generation ever fails with a "could not find Chromium" error, set
    `KV_REST_API_URL` / `KV_REST_API_TOKEN` from the integration. (If you prefer,
    swap `store.ts` to use `@upstash/redis` directly — it's a small change.)
 4. Add all other env vars from `.env.example`.
-5. The PDF route needs a bit of room — the API routes already set
-   `maxDuration`. PDF rendering with headless Chromium needs the **Pro** plan
-   (functions up to 300s); on Hobby, long reports may time out.
+5. Set the **Framework Preset to Next.js** (a `vercel.json` pins this, but
+   confirm it in Project Settings → Build & Deployment if you hit a "No Output
+   Directory named public" error — that error means it was set to a static
+   preset).
 
-> **Why KV is required in production:** serverless functions are stateless and
-> short-lived. The create request and the later status/approve requests run in
-> different invocations, so jobs must live in shared storage. The in-memory
-> fallback is for local dev only.
+**Works on the free Hobby plan.** Report generation runs after the response via
+Next's `after()`, so it completes without holding the request open, and
+`maxDuration` is set to 60s (the Hobby limit). A very large estate's report
+could occasionally approach that limit; if report generation times out on big
+domains, raise `maxDuration` to 300 and use the Pro plan. PDF rendering uses
+the bundled serverless Chromium (`@sparticuz/chromium`) automatically on Vercel.
+
+> **Why a shared store is required in production:** serverless functions are
+> stateless. The create request and the later status/approve requests run in
+> different invocations, so jobs must live in shared storage (Redis/KV). The
+> in-memory fallback is for local dev only.
 
 ---
 
